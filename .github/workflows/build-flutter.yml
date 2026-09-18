@@ -1,0 +1,56 @@
+name: Build Flutter APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      jobId:
+        required: true
+        type: string
+      payload:
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.0'
+          channel: 'stable'
+
+      - name: Parse payload & download ZIP
+        run: |
+          echo '${{ inputs.payload }}' > payload.json
+          ZIP_URL=$(jq -r '.zipAssetUrl // empty' payload.json)
+          if [ -n "$ZIP_URL" ]; then
+            curl -L -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -H "Accept: application/octet-stream" "$ZIP_URL" -o project.zip
+            unzip -o project.zip -d project/
+          fi
+
+      - name: Get dependencies
+        run: |
+          cd project
+          flutter pub get
+
+      - name: Build APK
+        run: |
+          cd project
+          flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-${{ inputs.jobId }}
+          path: project/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 1
